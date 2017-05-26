@@ -4,13 +4,13 @@ import com.dms.bittorent.Exceptions.BadHandshake;
 import com.dms.bittorent.Exceptions.BadPeer;
 import com.dms.bittorent.Exceptions.BadPiece;
 import com.dms.bittorent.bencoding.*;
-import jdk.jfr.events.ExceptionThrownEvent;
 
 import java.io.*;
 import java.net.*;
 import java.nio.ByteBuffer;
+import java.nio.channels.SelectionKey;
+import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.nio.channels.spi.SelectorProvider;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -181,37 +181,99 @@ public class Torrent {
 
     }
 
+
     public SocketChannel makeHandShake(Peer peer) throws BadPeer, BadHandshake, InterruptedException, BadPiece {
         InetSocketAddress isa = peer.getIsa();
         peer.BitField = new BitSet();
         final int HS_LENGTH = 49;
         final String PROTOCOL_ID = "BitTorrent protocol";
-
-        SocketChannel channel;
         try {
-            channel = SelectorProvider.provider().openSocketChannel();
-            channel.socket().setSoTimeout(200);
-            channel.socket().connect(isa);
-        } catch (SocketTimeoutException ste) {
-            throw new BadPeer();
+            SocketChannel channel = SocketChannel.open();
+            channel.configureBlocking(false);
+            channel.connect(new InetSocketAddress(peer.getIsa().getAddress(), peer.getIsa().getPort()));
+
+            Selector sel = Selector.open();
+            channel.register(sel, SelectionKey.OP_CONNECT);
+            boolean isHandShake = false;
+
+            while (true) {
+                if (sel.isOpen()) {
+                    int keys = sel.select();
+                    if (keys > 0) {
+                        Set<SelectionKey> selectedKeys = sel.selectedKeys();
+                        for (SelectionKey sk : selectedKeys) {
+                            if (!sk.isValid()) {
+                                break;
+                            }
+                            if (sk.isConnectable()) {
+                                System.out.println("accepting");
+                                channel.finishConnect();
+                                channel.register(sel, SelectionKey.OP_WRITE);
+                                sk.interestOps(SelectionKey.OP_WRITE);
+                            }
+                            if (sk.isWritable()) {
+                                SocketChannel ch = (SocketChannel) sk.channel();
+                                System.out.println("writing");
+                                if (!isHandShake)
+                                    ch.write(HTTPMessages.getHandShakeMessage(PEER_ID, info_hash));
+
+                                System.out.println("total wrote: ");
+                                sk.interestOps(SelectionKey.OP_READ);
+                            }
+                            if (sk.isReadable()) {
+                                SocketChannel ch = (SocketChannel) sk.channel();
+
+                                if (!isHandShake) {
+                                    isHandShake = checkHandShake(ch, info_hash, peer);
+                                }
+                                if (isHandShake) {
+                                    byte[] m = readMessage(channel);
+                                }
+                                System.out.println("total wrote: ");
+                                sk.interestOps(SelectionKey.OP_READ);
+                            }
+
+                        }
+                    }
+                }
+            }
+
+
         } catch (IOException e) {
-            throw new BadPeer();
+            System.out.println(e.fillInStackTrace());
         }
-        ByteBuffer buffer = ByteBuffer.allocate(HS_LENGTH + PROTOCOL_ID.length());
+        return null;
+    }
 
-        byte[] reserved = new byte[8];
-        byte[] infoHash = info_hash;
-        byte[] peerId = PEER_ID.getBytes(StandardCharsets.ISO_8859_1);
+    boolean checkHandShake(SocketChannel ch, byte[] info_hash, Peer peer) throws IOException, BadHandshake {
 
-        buffer.put((byte) PROTOCOL_ID.length());
-        buffer.put(PROTOCOL_ID.getBytes(StandardCharsets.ISO_8859_1));
-        buffer.put(reserved);
-        buffer.put(infoHash);
-        buffer.put(peerId);
+        ByteBuffer buffer = ByteBuffer.allocate(1);
+        ch.read(buffer);
+
+        int headerStr = buffer.get(0);
+
+        buffer = ByteBuffer.allocate(HTTPMessages.HS_LENGTH + headerStr);
+        ch.read(buffer);
         buffer.rewind();
 
-        try {
-            channel.write(buffer);
+        byte[] pstr = new byte[headerStr];
+        buffer.get(pstr);
+
+        if (!(new String(pstr, StandardCharsets.ISO_8859_1)).contains(HTTPMessages.PROTOCOL_ID))
+            throw new BadHandshake();
+
+        buffer.get(new byte[8]);
+        byte[] infoHashR = new byte[20];
+        buffer.get(infoHashR);
+        buffer.get(peer.peerID);
+
+        if (!Arrays.equals(infoHashR, info_hash))
+            throw new BadHandshake();
+        return true;
+    }
+
+    /*    try {
+            channel.write(HTTPMessages.getHandShakeMessage(PEER_ID, info_hash));
 
             ByteBuffer len = ByteBuffer.allocate(1);
             ByteBuffer data;
@@ -232,7 +294,7 @@ public class Torrent {
             byte[] pstr = new byte[pstrlen];
             data.get(pstr);
 
-            data.get(reserved);
+            data.get(new byte[8]);
 
             byte[] infoHashR = new byte[20];
             data.get(infoHashR);
@@ -267,8 +329,8 @@ public class Torrent {
         } catch (IOException e) {
 
         }
-        return null;
-    }
+        return null;*/
+
 
     private void updateBitField(Peer peer, byte[] bytes) {
 
@@ -367,7 +429,7 @@ public class Torrent {
         while (ii > i && i > 0) {
             int numBytes = 0;
             if (socketChannel.isConnected())
-            numBytes = socketChannel.read(buffer);
+                numBytes = socketChannel.read(buffer);
             if (numBytes <= 0) throw new BadPiece();
             i += numBytes;
         }
@@ -462,7 +524,7 @@ public class Torrent {
         storage.setPieceLength(pieceLength);
 
 
-        //   peers.add(new Peer(new InetSocketAddress("192.168.1.10", 40051)));
+        peers.add(new Peer(new InetSocketAddress("192.168.1.10", 40051)));
 
         //      storage.checkAll();
 //        while (!storage.isStorageValid()) {
@@ -503,12 +565,13 @@ public class Torrent {
                             s.peer.getProcesDownload(),
 
                             s.peer.s
-                    );}
+                    );
+            }
 //                System.out.format( s.num + " - " + storage.getPieceIndex(s.p) + " " + s.s);
-                if (i % 360 == 0)
-                    refreshPeers(url);
+            if (i % 360 == 0)
+                //refreshPeers(url);
 
-            Thread.sleep(5000);
+                Thread.sleep(5000);
 
             ConsoleHelper.writeMessageLn("---------------------");
             System.out.format("%4d %5d / %5d / %5d\n", i, storage.numValid(), storage.getNumPieces(), ar.size());
@@ -517,6 +580,6 @@ public class Torrent {
         ConsoleHelper.writeMessageLn("OK");
 
 //            if (storage.isStorageValid()) ConsoleHelper.writeMessageLn("");
-              }
+    }
 
 }

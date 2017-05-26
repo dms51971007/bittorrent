@@ -115,4 +115,13 @@ public class Peer {
     public int hashCode() {
         return isa != null ? isa.hashCode() : 0;
     }
+
+    @Override
+    public String toString() {
+        return "Peer{" +
+                "a=" + attempts +
+                ", isa=" + isa +
+                ", procesDownload=" + procesDownload +
+                '}';
+    }
 }

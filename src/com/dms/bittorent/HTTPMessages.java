@@ -1,6 +1,7 @@
 package com.dms.bittorent;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Created by r2 on 24.11.2016.
@@ -35,10 +36,29 @@ public class HTTPMessages {
 
     public static final int MESSAGE_LEN = 4;
     public static final int REQUEST_LEN = 13;
+
+    static final int HS_LENGTH = 49;
+    public static final String PROTOCOL_ID = "BitTorrent protocol";
+
     private HTTPMessageType type;
 
     public HTTPMessages() {
         this.type = type;
+    }
+
+
+    public static ByteBuffer getHandShakeMessage(String PEER_ID, byte[] info_hash)
+    {
+
+        ByteBuffer buffer = ByteBuffer.allocate(HS_LENGTH + PROTOCOL_ID.length());
+        buffer.put((byte) PROTOCOL_ID.length());
+        buffer.put(PROTOCOL_ID.getBytes(StandardCharsets.ISO_8859_1));
+        buffer.put(new byte[8]);
+        buffer.put(info_hash);
+        buffer.put(PEER_ID.getBytes(StandardCharsets.ISO_8859_1));
+        buffer.rewind();
+
+        return buffer;
     }
 
     public static HTTPMessageType readMessage(byte[] mess)
@@ -47,6 +67,8 @@ public class HTTPMessages {
 
         return HTTPMessageType.values()[mess[0]];
     }
+
+
 
     public static ByteBuffer getByteMessage(HTTPMessageType type) {
         if (type == HTTPMessageType.CHOKE) {

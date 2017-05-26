@@ -3,10 +3,8 @@ package com.dms.bittorent;
 import com.dms.bittorent.Exceptions.BadPeer;
 import com.dms.bittorent.Exceptions.BadPiece;
 
-import java.net.InetSocketAddress;
 import java.nio.channels.SocketChannel;
 import java.util.BitSet;
-import java.util.Random;
 
 /**
  * Created by r2 on 02.12.2016.
@@ -48,7 +46,7 @@ public class Downloader implements Runnable {
             if (peer != null)
                 try {
                     try {
-                        try (SocketChannel socketChannel = torrent.makeHandShake(peer);) {
+                        try (SocketChannel socketChannel = torrent.makeHandShake(peer);)  {
 
                             if (socketChannel != null) {
                                 peer.s= new StringBuilder("H");
@@ -73,6 +71,7 @@ public class Downloader implements Runnable {
 
                                     }
                                 }
+                               // System.out.println(peer.toString() + " no free pieces " );
                                 peer.resetGoodPacket();
                             }
                         }

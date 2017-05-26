@@ -60,13 +60,13 @@ public class UDPMessages {
         data.putInt(transactionId);
         data.put(infoHash);
         data.put(peerId.getBytes());
-        data.putLong(0); //downloaded
-        data.putLong(0);     //left
-        data.putLong(0); //uploaded
-        data.putInt(2); //event
+        data.putLong(90); //downloaded
+        data.putLong(90);     //left
+        data.putLong(90); //uploaded
+        data.putInt(0); //event
         data.putInt(0); //ip
         data.putInt(0);
-        data.putInt(-1);
+        data.putInt(10000);
         data.putShort((short) 6882);
         return data;
     }
@@ -78,10 +78,6 @@ public class UDPMessages {
             throw new IOException("Invalid packet size!");
         }
 
-        /**
-         * UDP response packets always start with the action (4 bytes), so
-         * we can extract it immediately.
-         */
         data.mark();
         int action = data.getInt();
         data.reset();
@@ -91,7 +87,6 @@ public class UDPMessages {
         } else if (action == UDPMessageType.ANNOUNCE_RESPONSE.getId()) {
             return readAnnonceResponse(data);
         } else if (action == UDPMessageType.ERROR.getId()) {
-            //  return readError(data);
         }
 
         throw new IOException("Unknown UDP tracker response message!");
