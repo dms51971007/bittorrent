@@ -64,9 +64,6 @@ public class Peer {
 
     }
 
-    private Piece piece;
-    private int pieceIndex;
-    private byte[] pieceData;
 
 
     public boolean isHandShake() {
@@ -77,48 +74,6 @@ public class Peer {
         isHandShake = handShake;
     }
 
-    public byte[] getPieceData() {
-        return pieceData;
-    }
-
-    public void setPieceData(byte[] pieceData) {
-        this.pieceData = pieceData;
-    }
-
-    public int getPieceIndex() {
-        return pieceIndex;
-    }
-
-    public void setPieceIndex(int pieceIndex) {
-        this.pieceIndex = pieceIndex;
-    }
-
-    public Piece getPiece() {
-        return piece;
-    }
-
-    public void setPiece(Piece piece) {
-        this.piece = piece;
-    }
-
-    public boolean isChocked() {
-        return isChocked;
-    }
-
-    public void setChocked(boolean chocked) {
-        isChocked = chocked;
-    }
-
-    public boolean isInterest() {
-        return isInterest;
-    }
-
-    public void setInterest(boolean interest) {
-        isInterest = interest;
-    }
-
-    private boolean isChocked;
-    private boolean isInterest;
 
     private Piece piece;
     private int pieceIndex;

@@ -33,7 +33,7 @@ public class Downloader implements Runnable {
     @Override
     public void run() {
 
-        while (torrent.getPeers().size() == 0) {
+/*        while (torrent.getPeers().size() == 0) {
             try {
                 Thread.sleep(1000);
             } catch (InterruptedException e) {
@@ -103,6 +103,6 @@ public class Downloader implements Runnable {
 
         }
 
-        System.out.print("|" + num);
+        System.out.print("|" + num);*/
     }
 }
