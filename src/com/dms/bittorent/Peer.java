@@ -3,6 +3,7 @@ package com.dms.bittorent;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.BitSet;
 import java.util.Date;
 import java.util.concurrent.locks.Lock;
@@ -24,12 +25,40 @@ public class Peer {
 
     private byte[] bytesMessages;
 
-    void putBytesMessages(byte[] inBytes) {
+    public void putBytesMessages(byte[] inBytes) {
+        if (inBytes.length == 0) return;
         if (bytesMessages == null) {
             bytesMessages = inBytes;
         } else {
-            byte[] newBytes = new byte[bytesMessages.length + inBytes.length];
+            bytesMessages = joinArrays(bytesMessages, inBytes);
         }
+    }
+
+    public static byte[] joinArrays(byte[] first, byte[] second) {
+        if (first == null) {
+            return second;
+        }
+        if (second == null) {
+            return first;
+        }
+        byte[] res = new byte[first.length + second.length];
+
+        System.arraycopy(first, 0, res, 0, first.length);
+        System.arraycopy(second, 0, res, first.length, second.length);
+
+        return res;
+    }
+
+    public byte[] readMessage() {
+
+        if (bytesMessages == null) return null;
+        if (bytesMessages.length < HTTPMessages.MESSAGE_LEN) return null;
+        int size = ByteBuffer.wrap(Arrays.copyOfRange(bytesMessages, 0, HTTPMessages.MESSAGE_LEN)).getInt();
+        if (bytesMessages.length < (HTTPMessages.MESSAGE_LEN + size)) return null;
+
+        byte[] res = Arrays.copyOfRange(bytesMessages, HTTPMessages.MESSAGE_LEN, HTTPMessages.MESSAGE_LEN + size);
+        bytesMessages = Arrays.copyOfRange(bytesMessages, size + HTTPMessages.MESSAGE_LEN, bytesMessages.length);
+        return res;
     }
 
   /* byte[] getBytesMessage() {
@@ -63,7 +92,6 @@ public class Peer {
         badPacket++;
 
     }
-
 
 
     public boolean isHandShake() {

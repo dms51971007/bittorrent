@@ -22,7 +22,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class Torrent {
     // TODO исправить
-    final String PEER_ID = "-BT1042-7da4d9d07789";
+    final String PEER_ID = "-BT2042-7da4d9d07789";
     Storage storage;
     Selector selector = Selector.open();
     private byte[] infoHash = new byte[20];
@@ -39,7 +39,6 @@ public class Torrent {
     public ArrayList<Peer> getPeers() {
         return peers;
     }
-
 
 
     public SocketChannel downloadLoop(Updater updater) throws Exception {
@@ -98,6 +97,8 @@ public class Torrent {
                         if (checkHandShake(ch, infoHash, peer)) {
                             peer.setHandShake(true);
                             ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
+                            ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.UNCHOKE));
+
                             peer.setLastLog();
                             sk.interestOps(SelectionKey.OP_WRITE);
 
@@ -106,36 +107,36 @@ public class Torrent {
                     }
 
                     if (peer.isHandShake()) {
-                        byte[] message = readMessage(ch);
-                        if (message == null) {
-                            continue;
-                        }
-                        peer.setLastLog();
 
-                        HTTPMessages.HTTPMessageType messageType = HTTPMessages.readMessage(message);
-                        System.out.println(messageType + " " + peer.getIsa());
-                        if (messageType == HTTPMessages.HTTPMessageType.BITFIELD) {
-                            updateBitField(peer, message);
-                            ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
-                        }
-                        if (messageType == HTTPMessages.HTTPMessageType.HAVE) {
-                            ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
-                            updateHAVE(peer, message);
-                        }
-                        if (messageType == HTTPMessages.HTTPMessageType.UNCHOKE) {
-                            peer.setChocked(true);
-                            ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
-                            requestNextPiece(ch, peer);
-                        }
-                        if (messageType == HTTPMessages.HTTPMessageType.PIECE) {
-                            //TODO проверка номера и размера
-                            byte[] requestData = Arrays.copyOfRange(message, 9, message.length);
-                            System.arraycopy(requestData, 0, peer.getPieceData(), peer.getPieceIndex(), requestData.length);
-                            //TODO УЖАС!!!!
-                            requestNextPiece(ch, peer);
-                            if (peer.getPiece() == null) {
-                                System.out.println("Done");
-                                sk.cancel();
+                        readMessage2(ch, peer);
+
+                        byte[] message = new byte[0];
+                        while ((message = peer.readMessage()) != null) {
+                            peer.setLastLog();
+
+                            HTTPMessages.HTTPMessageType messageType = HTTPMessages.readMessage(message);
+                            System.out.println(messageType + " " + peer.getIsa());
+                            if (messageType == HTTPMessages.HTTPMessageType.BITFIELD) {
+                                updateBitField(peer, message);
+                                ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
+
+                            } else if (messageType == HTTPMessages.HTTPMessageType.HAVE) {
+                                ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
+                                updateHAVE(peer, message);
+                            } else if (messageType == HTTPMessages.HTTPMessageType.UNCHOKE) {
+                                peer.setChocked(true);
+                                ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
+                                requestNextPiece(ch, peer);
+                            } else if (messageType == HTTPMessages.HTTPMessageType.PIECE) {
+                                //TODO проверка номера и размера
+                                byte[] requestData = Arrays.copyOfRange(message, 9, message.length);
+                                System.arraycopy(requestData, 0, peer.getPieceData(), peer.getPieceIndex(), requestData.length);
+                                //TODO УЖАС!!!!
+                                requestNextPiece(ch, peer);
+                                if (peer.getPiece() == null) {
+                                    System.out.println("Done");
+                                    sk.cancel();
+                                }
                             }
                         }
                     }
@@ -238,6 +239,22 @@ public class Torrent {
             peer.setBitField(i);
     }
 
+    private void readMessage2(SocketChannel socketChannel, Peer peer) {
+
+        try {
+            ByteBuffer buffer = ByteBuffer.allocate(20000);
+            int numBytes = 1;
+            while ((numBytes) > 0) {
+                numBytes = socketChannel.read(buffer);
+                if (numBytes > 0)
+                    peer.putBytesMessages(Arrays.copyOfRange(buffer.array(), 0, numBytes));
+                else return;
+            }
+
+        } catch (IOException e) {
+
+        }
+    }
 
     private byte[] readMessage(SocketChannel socketChannel) throws InterruptedException {
 
@@ -370,15 +387,15 @@ public class Torrent {
 //        peers.add(new Peer(new InetSocketAddress("192.168.1.10", 49158)));
 
         Thread announcer = new Thread(new Announcer(this, (BeList) root.get("announce-list")));
-        announcer.start();
+              announcer.start();
 
         //      storage.checkAll();
 
         Updater updater = new Updater(this, 5);
 
-        while (selector.keys().size() == 0) {
+/*        while (selector.keys().size() == 0) {
             Thread.sleep(1000);
-        }
+        }*/
 
         downloadLoop(updater);
 
