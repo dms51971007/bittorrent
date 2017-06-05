@@ -117,6 +117,54 @@ public class Peer {
         isInterest = interest;
     }
 
+    private boolean isChocked;
+    private boolean isInterest;
+
+    private Piece piece;
+    private int pieceIndex;
+
+    private byte[] pieceData;
+
+    public byte[] getPieceData() {
+        return pieceData;
+    }
+
+    public void setPieceData(byte[] pieceData) {
+        this.pieceData = pieceData;
+    }
+
+    public int getPieceIndex() {
+        return pieceIndex;
+    }
+
+    public void setPieceIndex(int pieceIndex) {
+        this.pieceIndex = pieceIndex;
+    }
+
+    public Piece getPiece() {
+        return piece;
+    }
+
+    public void setPiece(Piece piece) {
+        this.piece = piece;
+    }
+
+    public boolean isChocked() {
+        return isChocked;
+    }
+
+    public void setChocked(boolean chocked) {
+        isChocked = chocked;
+    }
+
+    public boolean isInterest() {
+        return isInterest;
+    }
+
+    public void setInterest(boolean interest) {
+        isInterest = interest;
+    }
+
     Long goodPacket = Long.valueOf(0);
     Long badPacket = Long.valueOf(0);
     Long goodHandShake = Long.valueOf(0);
