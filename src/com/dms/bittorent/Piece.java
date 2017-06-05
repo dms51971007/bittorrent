@@ -11,8 +11,17 @@ public class Piece {
     private byte[] hash;
     private boolean valid = true;
 
+    private boolean isUsed;
 
-    private final Lock lock = new ReentrantLock();
+    public boolean isUsed() {
+        return isUsed;
+    }
+
+    public void setUsed(boolean used) {
+        isUsed = used;
+    }
+
+    private Lock lock = new ReentrantLock();
 
     public Lock getLock() {
         return lock;

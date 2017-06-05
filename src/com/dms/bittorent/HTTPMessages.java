@@ -9,19 +9,20 @@ import java.nio.charset.StandardCharsets;
 public class HTTPMessages {
 
     public enum HTTPMessageType {
-        CHOKE (0),
-        UNCHOKE (1),
-        INTERESTED (2),
-        NOT_INTERESTED (3),
-        HAVE (4),
-        BITFIELD (5),
-        REQUEST (6),
-        PIECE (7),
-        CANCEL (8);
+        CHOKE(0),
+        UNCHOKE(1),
+        INTERESTED(2),
+        NOT_INTERESTED(3),
+        HAVE(4),
+        BITFIELD(5),
+        REQUEST(6),
+        PIECE(7),
+        CANCEL(8);
 
         private byte id;
+
         HTTPMessageType(int id) {
-            this.id = (byte)id;
+            this.id = (byte) id;
         }
 
         public boolean equals(byte c) {
@@ -36,6 +37,8 @@ public class HTTPMessages {
 
     public static final int MESSAGE_LEN = 4;
     public static final int REQUEST_LEN = 13;
+    public static final int HAVE_LEN = 4;
+
 
     static final int HS_LENGTH = 49;
     public static final String PROTOCOL_ID = "BitTorrent protocol";
@@ -47,8 +50,7 @@ public class HTTPMessages {
     }
 
 
-    public static ByteBuffer getHandShakeMessage(String PEER_ID, byte[] info_hash)
-    {
+    public static ByteBuffer getHandShakeMessage(String PEER_ID, byte[] info_hash) {
 
         ByteBuffer buffer = ByteBuffer.allocate(HS_LENGTH + PROTOCOL_ID.length());
         buffer.put((byte) PROTOCOL_ID.length());
@@ -61,13 +63,13 @@ public class HTTPMessages {
         return buffer;
     }
 
-    public static HTTPMessageType readMessage(byte[] mess)
-    {
+    public static HTTPMessageType readMessage(byte[] mess) {
         if (mess == null || mess.length == 0) return null;
-
-        return HTTPMessageType.values()[mess[0]];
+        try {
+        return HTTPMessageType.values()[mess[0]];} catch (ArrayIndexOutOfBoundsException e){
+            return null;
+        }
     }
-
 
 
     public static ByteBuffer getByteMessage(HTTPMessageType type) {
@@ -77,8 +79,7 @@ public class HTTPMessages {
             return getByteChocke();
         } else if (type == HTTPMessageType.INTERESTED) {
             return getByteInterested();
-        } else if (type == HTTPMessageType.REQUEST)
-        {
+        } else if (type == HTTPMessageType.REQUEST) {
             return getByteRequest();
         }
 
@@ -98,7 +99,7 @@ public class HTTPMessages {
     }
 
     private static ByteBuffer getByteRequest() {
-        ByteBuffer buffer = ByteBuffer.allocate(MESSAGE_LEN + REQUEST_LEN);
+        ByteBuffer buffer = ByteBuffer.allocate(MESSAGE_LEN + HAVE_LEN);
         buffer.putInt(REQUEST_LEN);
         buffer.put(HTTPMessageType.REQUEST.getTypeByte());
         buffer.putInt(0);
@@ -108,6 +109,16 @@ public class HTTPMessages {
         buffer.rewind();
         return buffer;
     }
+
+    public static ByteBuffer getByteHave(int numPiece) {
+        ByteBuffer buffer = ByteBuffer.allocate(MESSAGE_LEN + 1 + HAVE_LEN);
+        buffer.putInt(HAVE_LEN + 1);
+        buffer.put(HTTPMessageType.HAVE.getTypeByte());
+        buffer.putInt(numPiece);
+        buffer.rewind();
+        return buffer;
+    }
+
 
     public static ByteBuffer getByteRequest1(int piece, int offset, int size) {
         ByteBuffer buffer = ByteBuffer.allocate(MESSAGE_LEN + REQUEST_LEN);
@@ -136,7 +147,6 @@ public class HTTPMessages {
         buffer.rewind();
         return buffer;
     }
-
 
 
 }

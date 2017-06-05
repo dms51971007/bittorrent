@@ -22,14 +22,6 @@ public class Storage {
         return length;
     }
 
-    public synchronized Piece getFreePiece(BitSet bitfield) {
-        for (int i = 0; i < pieces.size(); i++) {
-            Piece p = pieces.get(i);
-            if (!p.isValid() && bitfield.get(i))
-                if (p.getLock().tryLock() == true) return p;
-        }
-        return null;
-    }
 
     public Integer getPieceIndex(Piece p) {
         return pieces.indexOf(p);
@@ -99,7 +91,6 @@ public class Storage {
     }
 
 
-
     public int numValid() {
         int res = 0;
         for (Piece p : pieces)
@@ -109,6 +100,17 @@ public class Storage {
         return res;
     }
 
+    public Piece getFreePiece(BitSet bitfield) {
+        for (int i = 0; i < pieces.size(); i++) {
+            Piece p = pieces.get(i);
+            if (!p.isValid() && bitfield.get(i))
+                if (!p.isUsed() && p.getLock().tryLock() == true) {
+                    p.setUsed(true);
+                    return p;
+                }
+        }
+        return null;
+    }
 
     public int getNumPieces() {
         return pieces.size();
