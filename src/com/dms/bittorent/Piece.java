@@ -10,6 +10,15 @@ import java.util.concurrent.locks.ReentrantLock;
 public class Piece {
     private byte[] hash;
     private boolean valid = true;
+    private byte[] pieceData;
+
+    public byte[] getPieceData() {
+        return pieceData;
+    }
+
+    public void setPieceData(byte[] pieceData) {
+        this.pieceData = pieceData;
+    }
 
     private boolean isUsed;
 

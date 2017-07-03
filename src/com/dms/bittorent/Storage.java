@@ -6,17 +6,19 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Created by r2 on 27.11.2016.
  */
-public class Storage {
+public class Storage implements Runnable {
     private ArrayList<Piece> pieces = new ArrayList<>();
     private LinkedHashMap<Path, Long> files = new LinkedHashMap<>();
     private Path dir;
     private Long pieceLength;
     private Long pieceLengthLast;
     private Long length;
+    private ConcurrentHashMap<Piece, Peer> writeMap = new ConcurrentHashMap();
 
     public Long getLength() {
         return length;
@@ -149,11 +151,15 @@ public class Storage {
         return res;
     }
 
-    public void writePiece(Piece p, byte[] piece) throws Exception {
 
+    public void writePiece(Piece p, Peer peer) {
+        writeMap.put(p, peer);
+    }
+
+    private void writeDisk(Piece p) throws Exception {
         int pieceLength = getPieceSize(p);
 
-        if (pieceLength != piece.length) {
+        if (pieceLength != p.getPieceData().length) {
             throw new Exception("Bad piece!!");
         }
         int pieceNum = pieces.indexOf(p);
@@ -166,10 +172,11 @@ public class Storage {
                 raf.setLength(files.get(ft.file));
             }
             raf.seek(ft.beginPos);
-            raf.write(Arrays.copyOfRange(piece, (int) ft.piecePos, (int) (ft.piecePos + ft.size)));
+            raf.write(Arrays.copyOfRange(p.getPieceData(), (int) ft.piecePos, (int) (ft.piecePos + ft.size)));
             raf.close();
         }
         p.setValid(true);
+        p.setPieceData(null);
 
     }
 
@@ -217,6 +224,44 @@ public class Storage {
     public boolean checkPiece(Piece p, byte[] piece) {
         if (piece == null) return false;
         return Arrays.equals(ConsoleHelper.hash(piece), p.getHash());
+    }
+
+
+    public boolean checkPiece(Piece p) {
+        if (p == null) return false;
+        return Arrays.equals(ConsoleHelper.hash(p.getPieceData()), p.getHash());
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            if (writeMap.size() == 0) continue;
+            System.out.println("Cash size:" + writeMap.size());
+            for (Map.Entry<Piece, Peer> e : writeMap.entrySet()) {
+                try {
+                    Peer peer = e.getValue();
+                    Piece piece = e.getKey();
+                    writeMap.remove(piece);
+                    if (!checkPiece(piece)) {
+//                        piece.getLock().unlock();
+                        piece.setUsed(false);
+                        System.out.println("BadPiece: " + peer);
+                    } else {
+                        writeDisk(piece);
+
+                    }
+
+
+                } catch (Exception e1) {
+                    e1.printStackTrace();
+                }
+            }
+            try {
+                Thread.sleep(1000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     private class FileTable {

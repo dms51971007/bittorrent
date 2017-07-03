@@ -40,22 +40,22 @@ public class Torrent {
         return peers;
     }
 
+    long totalTime = 0;
 
     public SocketChannel downloadLoop(Updater updater) throws Exception {
 
-        final int HS_LENGTH = 49;
-        final String PROTOCOL_ID = "BitTorrent protocol";
 
         while (true) {
+            updater.update();
             try {
-                selector.select(10);
+                selector.select(1);
             } catch (IOException e) {
                 break;
             }
-            updater.update();
             Set keys = selector.selectedKeys();
 
             Iterator it = keys.iterator();
+
 
             while (it.hasNext()) {
                 SelectionKey sk = (SelectionKey) it.next();
@@ -68,21 +68,24 @@ public class Torrent {
 
 
                 SocketChannel channel = (SocketChannel) sk.channel();
-                if (sk.isConnectable()) {
-                    channel.finishConnect();
-                    sk.interestOps(SelectionKey.OP_WRITE);
+                if (sk.isValid() && sk.isConnectable()) {
+                    try {
+                        channel.finishConnect();
+                        sk.interestOps(SelectionKey.OP_WRITE);
+                    } catch (Exception e) {
+                        //e.printStackTrace();
+                    }
                 }
+                if (sk.isValid() && sk.isWritable()) {
 
-                if (sk.isWritable()) {
-
-                    SocketChannel ch = (SocketChannel) sk.channel();
                     if (!peer.isHandShake()) {
                         peer.setLastLog();
-                        ch.write(HTTPMessages.getHandShakeMessage(PEER_ID, infoHash));
+                        peer.setTimeRequest();
+                        peer.write(HTTPMessages.getHandShakeMessage(PEER_ID, infoHash));
                     } else {
                         for (int i = 0; i < storage.getNumPieces(); i++) {
                             if (storage.isValidPiece(i)) {
-                                channel.write(HTTPMessages.getByteHave(i));
+                                peer.write(HTTPMessages.getByteHave(i));
                             }
                         }
                     }
@@ -90,52 +93,66 @@ public class Torrent {
 
 
                 }
-                if (sk.isReadable()) {
+                if (sk.isValid() && sk.isReadable()) {
                     SocketChannel ch = (SocketChannel) sk.channel();
+                    //Thread.sleep(100);
+                    peer.readMessage2();
+                    //peer.readMessage();
+
+                    byte[] message = new byte[0];
+                    //System.out.println(peer.bytesMessages.length);
+
 
                     if (!peer.isHandShake()) {
-                        if (checkHandShake(ch, infoHash, peer)) {
-                            peer.setHandShake(true);
-                            ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
-                            ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.UNCHOKE));
 
+                        if (checkHandShake2(infoHash, peer)) {
+                            peer.setHandShake(true);
+                            peer.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
+                            peer.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.UNCHOKE));
                             peer.setLastLog();
+                            peer.setTimeRequest();
                             sk.interestOps(SelectionKey.OP_WRITE);
 
                         }
 
-                    }
-
-                    if (peer.isHandShake()) {
-
-                        readMessage2(ch, peer);
-
-                        byte[] message = new byte[0];
+                    } else {
                         while ((message = peer.readMessage()) != null) {
-                            peer.setLastLog();
+
 
                             HTTPMessages.HTTPMessageType messageType = HTTPMessages.readMessage(message);
-                            System.out.println(messageType + " " + peer.getIsa());
+                            //  System.out.println(messageType);
+                            if (messageType != null) peer.setLastLog();
+
                             if (messageType == HTTPMessages.HTTPMessageType.BITFIELD) {
                                 updateBitField(peer, message);
-                                ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
+                                peer.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
 
                             } else if (messageType == HTTPMessages.HTTPMessageType.HAVE) {
-                                ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
+                                peer.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
                                 updateHAVE(peer, message);
                             } else if (messageType == HTTPMessages.HTTPMessageType.UNCHOKE) {
                                 peer.setChocked(true);
-                                ch.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
-                                requestNextPiece(ch, peer);
+                                peer.write(HTTPMessages.getByteMessage(HTTPMessages.HTTPMessageType.INTERESTED));
+                                requestNextPiece(peer);
                             } else if (messageType == HTTPMessages.HTTPMessageType.PIECE) {
                                 //TODO проверка номера и размера
+                                long startTime = new Date().getTime();
+
                                 byte[] requestData = Arrays.copyOfRange(message, 9, message.length);
-                                System.arraycopy(requestData, 0, peer.getPieceData(), peer.getPieceIndex(), requestData.length);
+                                try {
+                                    System.arraycopy(requestData, 0, peer.getPiece().getPieceData(), peer.getPieceIndex(), requestData.length);
+                                } catch (ArrayIndexOutOfBoundsException e) {
+                                    e.printStackTrace();
+                                } catch (NullPointerException e) {
+                                    e.printStackTrace();
+                                }
                                 //TODO УЖАС!!!!
-                                requestNextPiece(ch, peer);
+                                requestNextPiece(peer);
+                                this.totalTime += new Date().getTime() - startTime;
                                 if (peer.getPiece() == null) {
+                                    tryToKillSlowPeer(peer);
                                     System.out.println("Done");
-                                    sk.cancel();
+                                    if (peer.getPiece() == null) sk.cancel();
                                 }
                             }
                         }
@@ -152,17 +169,47 @@ public class Torrent {
         return null;
     }
 
+    private void tryToKillSlowPeer(Peer p) {
 
-    private boolean requestNextPiece(SocketChannel channel, Peer peer) throws Exception {
+        for (SelectionKey sk : selector.keys()) {
+            Peer peerToKill = (Peer) sk.attachment();
+
+            // TODO getPieceIndex перенести в Piece
+            if (peerToKill.getPiece() != null && peerToKill.getSpeedRequest() > p.getSpeedRequest() && p.getBitField().get(storage.getPieceIndex(peerToKill.getPiece()))) {
+                try {
+                    System.out.println("Close peer" + peerToKill);
+                    sk.channel().close();
+                    sk.cancel();
+                    peerToKill.setBadPeer();
+                    peerToKill.free();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+                try {
+                    requestNextPiece(p);
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                System.out.println(p.getPiece());
+                return;
+            }
+        }
+
+
+    }
+
+
+    private boolean requestNextPiece(Peer peer) throws Exception {
         final int PACKET_SIZE = 16384;
 
 
         if (peer.getPiece() == null) {
-            Piece newPiece = storage.getFreePiece(peer.BitField);
+            Piece newPiece = storage.getFreePiece(peer.getBitField());
             if (newPiece == null) return false;
+            peer.setTimeRequest();
             peer.setPiece(newPiece);
             peer.setPieceIndex(0);
-            peer.setPieceData(new byte[storage.getPieceSize(peer.getPiece())]);
+            peer.getPiece().setPieceData(new byte[storage.getPieceSize(peer.getPiece())]);
             // System.out.println(" " + peer.getIsa() + "|" + newPiece);
         } else {
             peer.setPieceIndex(peer.getPieceIndex() + PACKET_SIZE);
@@ -174,48 +221,39 @@ public class Torrent {
         int questSize = (pl - peer.getPieceIndex() > PACKET_SIZE) ? PACKET_SIZE : pl - peer.getPieceIndex();
 
         if (peer.getPieceIndex() >= pl) {
-            storage.checkPiece(peer.getPiece(), peer.getPieceData());
-            storage.writePiece(peer.getPiece(), peer.getPieceData());
-            channel.write(HTTPMessages.getByteHave(storage.getPieceIndex(peer.getPiece())));
+//            System.out.println(storage.checkPiece(peer.getPiece(), peer.getPieceData()));
+            peer.getPiece().getLock().unlock();
+            storage.writePiece(peer.getPiece(), peer);
+            peer.write(HTTPMessages.getByteHave(storage.getPieceIndex(peer.getPiece())));
             peer.setPiece(null);
             peer.attempts++;
             //TODO полечить
-            requestNextPiece(channel, peer);
+            requestNextPiece(peer);
         } else
-            channel.write(HTTPMessages.getByteRequest1(numPiece, peer.getPieceIndex(), questSize));
+            peer.write(HTTPMessages.getByteRequest1(numPiece, peer.getPieceIndex(), questSize));
         return true;
     }
 
+    boolean checkHandShake2(byte[] info_hash, Peer peer) {
+        byte[] bytesMessages = peer.getBytesMessages();
+        if (bytesMessages == null) return false;
+        if (bytesMessages.length == 0) return false;
 
-    boolean checkHandShake(SocketChannel ch, byte[] info_hash, Peer peer) {
+        if (bytesMessages.length < bytesMessages[0] + HTTPMessages.HS_LENGTH - 1) return false;
 
-        ByteBuffer buffer = ByteBuffer.allocate(1);
-        try {
-            ch.read(buffer);
-            int headerStr = buffer.get(0);
+        String header = new String(Arrays.copyOfRange(bytesMessages, 1, bytesMessages[0] + 1));
 
-            buffer = ByteBuffer.allocate(HTTPMessages.HS_LENGTH + headerStr - 1);
-            ch.read(buffer);
-            buffer.rewind();
-            byte[] pstr = new byte[headerStr];
-            buffer.get(pstr);
+        if (!header.equals(HTTPMessages.PROTOCOL_ID)) return false;
 
-            if (!(new String(pstr, StandardCharsets.ISO_8859_1)).contains(HTTPMessages.PROTOCOL_ID))
-                return false;
+        byte[] infoHashR = Arrays.copyOfRange(bytesMessages, bytesMessages[0] + 9, bytesMessages[0] + 9 + 20);
 
-            buffer.get(new byte[8]);
-            byte[] infoHashR = new byte[20];
-            buffer.get(infoHashR);
-            buffer.get(peer.peerID);
+        if (!Arrays.equals(infoHashR, info_hash))
+            return false;
+        peer.setPeerID(Arrays.copyOfRange(bytesMessages, bytesMessages[0] + 9 + 20, bytesMessages[0] + 9 + 20 + 20));
 
-            if (!Arrays.equals(infoHashR, info_hash))
-                return false;
-            return true;
-        } catch (IOException e) {
-        } catch (IllegalArgumentException e) {
-        }
+        peer.setBytesMessages(Arrays.copyOfRange(bytesMessages, bytesMessages[0] + 9 + 20 + 20, bytesMessages.length));
 
-        return false;
+        return true;
     }
 
 
@@ -237,82 +275,6 @@ public class Torrent {
         int i = java.nio.ByteBuffer.wrap(Arrays.copyOfRange(bytes, 1, 5)).getInt();
         if (i > 0)
             peer.setBitField(i);
-    }
-
-    private void readMessage2(SocketChannel socketChannel, Peer peer) {
-
-        try {
-            ByteBuffer buffer = ByteBuffer.allocate(20000);
-            int numBytes = 1;
-            while ((numBytes) > 0) {
-                numBytes = socketChannel.read(buffer);
-                if (numBytes > 0)
-                    peer.putBytesMessages(Arrays.copyOfRange(buffer.array(), 0, numBytes));
-                else return;
-            }
-
-        } catch (IOException e) {
-
-        }
-    }
-
-    private byte[] readMessage(SocketChannel socketChannel) throws InterruptedException {
-
-        try {
-            //TODO разобраться
-            ByteBuffer buffer = ByteBuffer.allocate(4);
-            int numBytes = 0;
-            final int MAXATTEMPS = 40;
-            int attempts = 0;
-            while ((numBytes) != 4) {
-                attempts++;
-                if (attempts > 3)
-                    Thread.sleep(attempts);
-                if (attempts > MAXATTEMPS)
-                    return null;
-
-                try {
-                    numBytes += socketChannel.read(buffer);
-                } catch (IOException e) {
-                    return null;
-                }
-            }
-
-
-            buffer.flip();
-            int ii = buffer.getInt();
-
-            if (ii < 20000)
-                buffer = ByteBuffer.allocate(ii);
-            else
-                return null;
-            numBytes = 0;
-            attempts = 0;
-            while ((numBytes) != ii) {
-                attempts++;
-                if (attempts > 3)
-                    Thread.sleep(attempts);
-                if (attempts > MAXATTEMPS)
-                    return null;
-                try {
-                    numBytes += socketChannel.read(buffer);
-                } catch (IOException e) {
-                    return null;
-                }
-            }
-
-            buffer.rewind();
-            byte[] b = Arrays.copyOfRange(buffer.array(), 0, ii);
-
-            return b;
-        } catch (
-                IllegalArgumentException e)
-
-        {
-            return null;
-
-        }
-
     }
 
 
@@ -383,75 +345,24 @@ public class Torrent {
         storage.setPieceLength(pieceLength);
 
 
-//        peers.add(new Peer(new InetSocketAddress("192.168.1.10", 40051)));
+        //        peers.add(new Peer(new InetSocketAddress("192.168.1.10", 40051)));
 //        peers.add(new Peer(new InetSocketAddress("192.168.1.10", 49158)));
 
+        Thread storageWriter = new Thread(storage);
         Thread announcer = new Thread(new Announcer(this, (BeList) root.get("announce-list")));
-              announcer.start();
+        announcer.start();
 
+        storageWriter.start();
         //      storage.checkAll();
 
-        Updater updater = new Updater(this, 5);
+        Updater updater = new Updater(this, 10);
 
-/*        while (selector.keys().size() == 0) {
-            Thread.sleep(1000);
-        }*/
 
         downloadLoop(updater);
 
 
-//        while (!storage.isStorageValid()) {
-        // refreshPeers(url);
-
-//              Downloader n = new Downloader(this, 0);
-///             n.run();
-
-        //if (storage.isValidPiece(i)) continue;
-//        LinkedBlockingQueue<Runnable> queue = new LinkedBlockingQueue<Runnable>();
-//        ArrayList<Runnable> ar = new ArrayList<>();
-//        for (int i = 0; i < 1; i++) {
-//            Downloader n = new Downloader(this, i);
-//            queue.put(n);
-//            ar.add(n);
-//        }
-
-
-//        ThreadPoolExecutor tpe = new ThreadPoolExecutor(40, 40, 1, TimeUnit.MILLISECONDS, queue);
-//        tpe.prestartAllCoreThreads();
-//        tpe.shutdown();
-//        tpe.awaitTermination(5, TimeUnit.SECONDS);
-//        long i = 0;
-
-//        while (!storage.isStorageValid()) {
-//
-//            for (Runnable r : ar) {
-//                Downloader s = (Downloader) r;
-//                if (storage.getPieceIndex(s.p) != -1)
-//                    System.out.format("%5s %4d %5d %22s - %6d - %6d %8d %s \n",
-//                            s.peer.getPeerID().substring(0, 5),
-//                            s.percentAviable(),
-//                            s.peer.attempts,
-//                            s.peer.getIsa(),
-//                            storage.getPieceIndex(s.p),
-//                            s.peer.getGoodPacket(),
-//                            s.peer.getProcesDownload(),
-//
-//                            s.peer.s
-//                    );
-//            }
-////                System.out.format( s.num + " - " + storage.getPieceIndex(s.p) + " " + s.s);
-//            if (i % 360 == 0)
-//                //refreshPeers(url);
-//
-//                Thread.sleep(5000);
-//
-// /*           ConsoleHelper.writeMessageLn("---------------------");
-//            System.out.format("%4d %5d / %5d / %5d\n", i, storage.numValid(), storage.getNumPieces(), ar.size());*/
-//            i++;
-//        }
         ConsoleHelper.writeMessageLn("OK");
 
-//            if (storage.isStorageValid()) ConsoleHelper.writeMessageLn("");
     }
 
 }

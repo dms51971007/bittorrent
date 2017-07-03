@@ -1,7 +1,12 @@
 package com.dms.bittorent;
 
+
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
+import java.nio.channels.NotYetConnectedException;
+import java.nio.channels.Selector;
+import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.BitSet;
@@ -14,7 +19,9 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class Peer {
 
+    private SocketChannel socketChannel;
     private InetSocketAddress isa;
+
     private final Lock lock = new ReentrantLock();
     private long lastLog;
 
@@ -23,7 +30,98 @@ public class Peer {
     private boolean isHandShake;
     private boolean isUsed;
 
+    Long goodPacket = Long.valueOf(0);
+    private Long badPacket = Long.valueOf(0);
+    private Long goodHandShake = Long.valueOf(0);
+
+
+    Long attempts = Long.valueOf(0);
+    private boolean badPeer = false;
+
+
+    private BitSet BitField = new BitSet();
+
+
+    private byte[] peerID = new byte[20];
+
+    public BitSet getBitField() {
+        return BitField;
+    }
+
+    public void setBytesMessages(byte[] bytesMessages) {
+        this.bytesMessages = bytesMessages;
+    }
+
     private byte[] bytesMessages;
+
+    private Piece piece;
+    private int pieceIndex;
+
+    private long timeRequest;
+
+    public long getSpeedRequest() {
+        return new Date().getTime() - this.timeRequest;
+    }
+
+
+    public void setTimeRequest() {
+        this.timeRequest = new Date().getTime();
+    }
+
+    public void setPeerID(byte[] peerID) {
+        this.peerID = peerID;
+    }
+
+    public byte[] getBytesMessages() {
+        return bytesMessages;
+    }
+
+    public SocketChannel getSocketChannel() {
+        return socketChannel;
+    }
+
+    public void setSocketChannel(Selector selector) {
+        try {
+            socketChannel = SocketChannel.open();
+            socketChannel.configureBlocking(false);
+            socketChannel.connect(this.getIsa());
+            this.free();
+            int ops = socketChannel.validOps();
+            this.setHandShake(false);
+            socketChannel.register(selector, ops, this);
+            this.setLastLog();
+            this.setUsed(true);
+
+        } catch (IOException e) {
+        }
+    }
+
+    public void readMessage2() {
+
+
+        try {
+            ByteBuffer buffer = ByteBuffer.allocate(20000);
+            int numBytes = socketChannel.read(buffer);
+            if (numBytes > 0)
+                this.putBytesMessages(Arrays.copyOfRange(buffer.array(), 0, numBytes));
+
+        } catch (IOException e) {
+
+        } catch (NotYetConnectedException e) {
+
+        }
+    }
+
+
+    public void write(ByteBuffer byteBuffer) {
+
+        try {
+            socketChannel.write(byteBuffer);
+        } catch (IOException e) {
+            //   e.printStackTrace();
+        }
+    }
+
 
     public void putBytesMessages(byte[] inBytes) {
         if (inBytes.length == 0) return;
@@ -54,16 +152,14 @@ public class Peer {
         if (bytesMessages == null) return null;
         if (bytesMessages.length < HTTPMessages.MESSAGE_LEN) return null;
         int size = ByteBuffer.wrap(Arrays.copyOfRange(bytesMessages, 0, HTTPMessages.MESSAGE_LEN)).getInt();
-        if (bytesMessages.length < (HTTPMessages.MESSAGE_LEN + size)) return null;
+        if (bytesMessages.length < (HTTPMessages.MESSAGE_LEN + size))
+            return null;
 
         byte[] res = Arrays.copyOfRange(bytesMessages, HTTPMessages.MESSAGE_LEN, HTTPMessages.MESSAGE_LEN + size);
         bytesMessages = Arrays.copyOfRange(bytesMessages, size + HTTPMessages.MESSAGE_LEN, bytesMessages.length);
         return res;
     }
 
-  /* byte[] getBytesMessage() {
-
-    }*/
 
     public int fromLastLog() {
         return (int) (new Date().getTime() - lastLog) / 1000;
@@ -82,14 +178,16 @@ public class Peer {
     }
 
     public void free() {
-        setBadPeer();
-        setUsed(false);
-        setInterest(false);
-        setHandShake(false);
-        setChocked(false);
-        if (getPiece() != null)
-            getPiece().setUsed(false);
-        badPacket++;
+        //setBadPeer();
+        this.setUsed(false);
+        this.setInterest(false);
+        this.setHandShake(false);
+        this.setChocked(false);
+        this.bytesMessages = null;
+        if (this.getPiece() != null)
+            this.getPiece().setUsed(false);
+        this.setPiece(null);
+        this.badPacket++;
 
     }
 
@@ -102,19 +200,6 @@ public class Peer {
         isHandShake = handShake;
     }
 
-
-    private Piece piece;
-    private int pieceIndex;
-
-    private byte[] pieceData;
-
-    public byte[] getPieceData() {
-        return pieceData;
-    }
-
-    public void setPieceData(byte[] pieceData) {
-        this.pieceData = pieceData;
-    }
 
     public int getPieceIndex() {
         return pieceIndex;
@@ -148,25 +233,6 @@ public class Peer {
         isInterest = interest;
     }
 
-    Long goodPacket = Long.valueOf(0);
-    Long badPacket = Long.valueOf(0);
-    Long goodHandShake = Long.valueOf(0);
-
-    public Integer getProcesDownload() {
-        return procesDownload;
-    }
-
-    public void setProcesDownload(Integer procesDownload) {
-        this.procesDownload = procesDownload;
-    }
-
-    Integer procesDownload;
-    Long attempts = Long.valueOf(0);
-    boolean badPeer = false;
-    BitSet BitField = new BitSet();
-    StringBuilder s = new StringBuilder();
-
-    byte[] peerID = new byte[20];
 
     public void setBitField(BitSet bitField) {
         BitField = bitField;
@@ -255,8 +321,10 @@ public class Peer {
         return "Peer{" +
                 "a=" + attempts +
                 ", isa=" + isa +
-                ", bad=" + badPacket +
+                ", piece=" + piece +
+                ", used=" + isUsed() +
                 ", hs=" + isHandShake() +
+                ", speed=" + getSpeedRequest() +
                 ", lastlog=" + fromLastLog() +
                 '}';
     }

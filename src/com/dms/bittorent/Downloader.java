@@ -21,7 +21,7 @@ public class Downloader implements Runnable {
     }
 
     public int percentAviable() {
-        BitSet bs = peer.BitField;
+        BitSet bs = peer.getBitField();
         int res = 0;
         for (int i = bs.nextSetBit(0); i >= 0; i = bs.nextSetBit(i + 1)) {
             res++;
