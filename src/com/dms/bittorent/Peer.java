@@ -8,9 +8,7 @@ import java.nio.channels.NotYetConnectedException;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.BitSet;
-import java.util.Date;
+import java.util.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -29,23 +27,33 @@ public class Peer {
     private boolean isInterest;
     private boolean isHandShake;
     private boolean isUsed;
-
-    Long goodPacket = Long.valueOf(0);
-    private Long badPacket = Long.valueOf(0);
-    private Long goodHandShake = Long.valueOf(0);
-
-
-    Long attempts = Long.valueOf(0);
     private boolean badPeer = false;
 
 
-    private BitSet BitField = new BitSet();
+    Long goodPacket = Long.valueOf(0);
+    private Long badPacket = Long.valueOf(0);
+    private Long badHandShake = Long.valueOf(0);
 
+    public Long getBadHandShake() {
+        return badHandShake;
+    }
+
+    public void addBadHandShake(int badHandShake) {
+        this.badHandShake += badHandShake;
+    }
+
+
+    Long attempts = Long.valueOf(0);
+
+
+    private BitSet recieveBitField;
+
+    private BitSet sentBitField;
 
     private byte[] peerID = new byte[20];
 
-    public BitSet getBitField() {
-        return BitField;
+    public BitSet getRecieveBitField() {
+        return recieveBitField;
     }
 
     public void setBytesMessages(byte[] bytesMessages) {
@@ -53,6 +61,8 @@ public class Peer {
     }
 
     private byte[] bytesMessages;
+
+    private List<ByteBuffer> writeBuffers = new ArrayList<>();
 
     private Piece piece;
     private int pieceIndex;
@@ -63,6 +73,9 @@ public class Peer {
         return new Date().getTime() - this.timeRequest;
     }
 
+    public List<ByteBuffer> getWriteBuffers() {
+        return writeBuffers;
+    }
 
     public void setTimeRequest() {
         this.timeRequest = new Date().getTime();
@@ -91,6 +104,9 @@ public class Peer {
             socketChannel.register(selector, ops, this);
             this.setLastLog();
             this.setUsed(true);
+            this.addBadHandShake(1);
+            //TODO не хорошо
+            this.sentBitField = new BitSet(recieveBitField.size() - 1);
 
         } catch (IOException e) {
         }
@@ -113,13 +129,14 @@ public class Peer {
     }
 
 
-    public void write(ByteBuffer byteBuffer) {
+    public int write(ByteBuffer byteBuffer) {
 
         try {
-            socketChannel.write(byteBuffer);
+            return this.socketChannel.write(byteBuffer);
         } catch (IOException e) {
-            //   e.printStackTrace();
+            return 0;
         }
+
     }
 
 
@@ -150,13 +167,13 @@ public class Peer {
     public byte[] readMessage() {
 
         if (bytesMessages == null) return null;
-        if (bytesMessages.length < HTTPMessages.MESSAGE_LEN) return null;
-        int size = ByteBuffer.wrap(Arrays.copyOfRange(bytesMessages, 0, HTTPMessages.MESSAGE_LEN)).getInt();
-        if (bytesMessages.length < (HTTPMessages.MESSAGE_LEN + size))
+        if (bytesMessages.length < ProtocolMessages.MESSAGE_LEN) return null;
+        int size = ByteBuffer.wrap(Arrays.copyOfRange(bytesMessages, 0, ProtocolMessages.MESSAGE_LEN)).getInt();
+        if (bytesMessages.length < (ProtocolMessages.MESSAGE_LEN + size))
             return null;
 
-        byte[] res = Arrays.copyOfRange(bytesMessages, HTTPMessages.MESSAGE_LEN, HTTPMessages.MESSAGE_LEN + size);
-        bytesMessages = Arrays.copyOfRange(bytesMessages, size + HTTPMessages.MESSAGE_LEN, bytesMessages.length);
+        byte[] res = Arrays.copyOfRange(bytesMessages, ProtocolMessages.MESSAGE_LEN, ProtocolMessages.MESSAGE_LEN + size);
+        bytesMessages = Arrays.copyOfRange(bytesMessages, size + ProtocolMessages.MESSAGE_LEN, bytesMessages.length);
         return res;
     }
 
@@ -198,6 +215,8 @@ public class Peer {
 
     public void setHandShake(boolean handShake) {
         isHandShake = handShake;
+        if (handShake)
+            this.badHandShake = 0L;
     }
 
 
@@ -233,13 +252,16 @@ public class Peer {
         isInterest = interest;
     }
 
+    public BitSet getSentBitField() {
+        return sentBitField;
+    }
 
-    public void setBitField(BitSet bitField) {
-        BitField = bitField;
+    public void setRecieveBitField(BitSet recieveBitField) {
+        this.recieveBitField = recieveBitField;
     }
 
     public void setBitField(int i) {
-        BitField.set(i);
+        recieveBitField.set(i);
     }
 
     public String getPeerID() {
@@ -278,7 +300,7 @@ public class Peer {
     }
 
     public void incGoodHandShake() {
-        this.goodHandShake++;
+        this.badHandShake++;
     }
 
     public void incAttepmpts() {
@@ -295,9 +317,11 @@ public class Peer {
         return lock;
     }
 
-    public Peer(InetSocketAddress isa) {
+    public Peer(InetSocketAddress isa, int sizeBitField) {
 
         this.isa = isa;
+        sentBitField = new BitSet(sizeBitField - 1);
+        recieveBitField = new BitSet(sizeBitField - 1);
     }
 
     @Override
@@ -323,6 +347,7 @@ public class Peer {
                 ", isa=" + isa +
                 ", piece=" + piece +
                 ", used=" + isUsed() +
+                ", bhs=" + getBadHandShake() +
                 ", hs=" + isHandShake() +
                 ", speed=" + getSpeedRequest() +
                 ", lastlog=" + fromLastLog() +

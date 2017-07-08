@@ -6,7 +6,8 @@ import java.nio.charset.StandardCharsets;
 /**
  * Created by r2 on 24.11.2016.
  */
-public class HTTPMessages {
+public class ProtocolMessages {
+
 
     public enum HTTPMessageType {
         CHOKE(0),
@@ -37,7 +38,8 @@ public class HTTPMessages {
 
     public static final int MESSAGE_LEN = 4;
     public static final int REQUEST_LEN = 13;
-    public static final int HAVE_LEN = 4;
+    public static final int HAVE_LEN = 5;
+    public static final int PIECE_LEN = 9;
 
 
     static final int HS_LENGTH = 49;
@@ -45,7 +47,7 @@ public class HTTPMessages {
 
     private HTTPMessageType type;
 
-    public HTTPMessages() {
+    public ProtocolMessages() {
         this.type = type;
     }
 
@@ -66,7 +68,8 @@ public class HTTPMessages {
     public static HTTPMessageType readMessage(byte[] mess) {
         if (mess == null || mess.length == 0) return null;
         try {
-        return HTTPMessageType.values()[mess[0]];} catch (ArrayIndexOutOfBoundsException e){
+            return HTTPMessageType.values()[mess[0]];
+        } catch (ArrayIndexOutOfBoundsException e) {
             return null;
         }
     }
@@ -76,11 +79,9 @@ public class HTTPMessages {
         if (type == HTTPMessageType.CHOKE) {
             return getByteChocke();
         } else if (type == HTTPMessageType.UNCHOKE) {
-            return getByteChocke();
+            return getByteUnChocke();
         } else if (type == HTTPMessageType.INTERESTED) {
             return getByteInterested();
-        } else if (type == HTTPMessageType.REQUEST) {
-            return getByteRequest();
         }
 
 
@@ -98,21 +99,23 @@ public class HTTPMessages {
 
     }
 
-    private static ByteBuffer getByteRequest() {
-        ByteBuffer buffer = ByteBuffer.allocate(MESSAGE_LEN + HAVE_LEN);
-        buffer.putInt(REQUEST_LEN);
-        buffer.put(HTTPMessageType.REQUEST.getTypeByte());
-        buffer.putInt(0);
-        buffer.putInt(0);
-        buffer.putInt(16384);
 
+    public static ByteBuffer getBytePiece(int pieceIndex, int offset, byte[] b) {
+        ByteBuffer buffer = ByteBuffer.allocate(MESSAGE_LEN + PIECE_LEN + b.length);
+        buffer.putInt(PIECE_LEN+b.length);
+        buffer.put(HTTPMessageType.PIECE.getTypeByte());
+        buffer.putInt(pieceIndex);
+        buffer.putInt(offset);
+        buffer.put(b);
         buffer.rewind();
         return buffer;
+
     }
 
+
     public static ByteBuffer getByteHave(int numPiece) {
-        ByteBuffer buffer = ByteBuffer.allocate(MESSAGE_LEN + 1 + HAVE_LEN);
-        buffer.putInt(HAVE_LEN + 1);
+        ByteBuffer buffer = ByteBuffer.allocate(MESSAGE_LEN + HAVE_LEN);
+        buffer.putInt(HAVE_LEN );
         buffer.put(HTTPMessageType.HAVE.getTypeByte());
         buffer.putInt(numPiece);
         buffer.rewind();
@@ -131,6 +134,7 @@ public class HTTPMessages {
         buffer.rewind();
         return buffer;
     }
+
 
     private static ByteBuffer getByteUnChocke() {
         ByteBuffer buffer = ByteBuffer.allocate(MESSAGE_LEN + 1);

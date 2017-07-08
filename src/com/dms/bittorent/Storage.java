@@ -19,9 +19,26 @@ public class Storage implements Runnable {
     private Long pieceLengthLast;
     private Long length;
     private ConcurrentHashMap<Piece, Peer> writeMap = new ConcurrentHashMap();
+    private Stack<Piece> readCache = new Stack<>();
+
+    private BitSet bitField;
+
+    public BitSet getBitField() {
+        return bitField;
+    }
+
+    public void setBitField() {
+        this.bitField = new BitSet(pieces.size());
+        for (int i = 0; i <= pieces.size() - 1; i++)
+            if (pieces.get(i).isValid()) this.bitField.set(i);
+    }
 
     public Long getLength() {
         return length;
+    }
+
+    public int getNumOfPieces() {
+        return pieces.size();
     }
 
 
@@ -92,6 +109,9 @@ public class Storage implements Runnable {
         return true;
     }
 
+    public Piece getPieceByIndex(int pieceNumber) {
+        return pieces.get(pieceNumber);
+    }
 
     public int numValid() {
         int res = 0;
@@ -120,7 +140,7 @@ public class Storage implements Runnable {
 
     public void setPieceLength(Long pieceLength) {
         this.pieceLength = pieceLength;
-        pieceLengthLast = (this.length - (long) (pieces.size() - 1) * pieceLength);
+        this.pieceLengthLast = (this.length - (long) (pieces.size() - 1) * pieceLength);
     }
 
     public void addFile(String strFile, Long length) {
@@ -133,7 +153,15 @@ public class Storage implements Runnable {
         pieces.add(new Piece(hash));
     }
 
-    public byte[] readPiece(Piece p) throws IOException {
+    public byte[] readPieceCache(Piece p) throws IOException {
+        if (p.getPieceData() == null) {
+            return readPiece(p);
+        }
+        return p.getPieceData();
+    }
+
+
+    public synchronized byte[] readPiece(Piece p) throws IOException {
         //TODO проверять тольео нужные файлы
         int pieceNum = pieces.indexOf(p);
         checkAllFiles();
@@ -147,8 +175,8 @@ public class Storage implements Runnable {
             System.arraycopy(b, 0, res, (int) ft.piecePos, (int) ft.size);
             raf.close();
         }
-
-        return res;
+        p.setPieceData(res);
+        return p.getPieceData();
     }
 
 
@@ -176,7 +204,7 @@ public class Storage implements Runnable {
             raf.close();
         }
         p.setValid(true);
-        p.setPieceData(null);
+//        p.setPieceData(null);
 
     }
 
@@ -206,11 +234,13 @@ public class Storage implements Runnable {
         Integer valid = Integer.valueOf(0);
         for (int i = 0; i < pieces.size(); i++) {
             if (i % persent == 0 || i == pieces.size() - 1) {
-                ConsoleHelper.writeMessageLn(String.format("Strorage checking (valid/checked/toatal): %d/%d/%d", valid, i, pieces.size() - 1));
+                ConsoleHelper.writeMessageLn(String.format("Strorage checking (valid/checked/total): %d/%d/%d", valid, i, pieces.size() - 1));
             }
             byte[] b = readPiece(pieces.get(i));
             if (checkPiece(pieces.get(i), b)) {
                 pieces.get(i).setValid(true);
+                pieces.get(i).setPieceData(null);
+                bitField.set(i);
                 valid++;
             } else {
                 pieces.get(i).setValid(false);
@@ -243,18 +273,23 @@ public class Storage implements Runnable {
                     Piece piece = e.getKey();
                     writeMap.remove(piece);
                     if (!checkPiece(piece)) {
-//                        piece.getLock().unlock();
-                        piece.setUsed(false);
                         System.out.println("BadPiece: " + peer);
                     } else {
+                        bitField.set(getPieceIndex(piece));
+                        peer.getSentBitField().set(getPieceIndex(piece));
                         writeDisk(piece);
 
                     }
-
-
+                    piece.setUsed(false);
+                    //piece.setPieceData(null);
                 } catch (Exception e1) {
                     e1.printStackTrace();
                 }
+
+            }
+            for (Piece p :
+                    pieces) {
+                if (p.getLastReadTimer() > 3000 && p.isValid()) p.setPieceData(null);
             }
             try {
                 Thread.sleep(1000);

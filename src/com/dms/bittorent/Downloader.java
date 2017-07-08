@@ -1,9 +1,5 @@
 package com.dms.bittorent;
 
-import com.dms.bittorent.Exceptions.BadPeer;
-import com.dms.bittorent.Exceptions.BadPiece;
-
-import java.nio.channels.SocketChannel;
 import java.util.BitSet;
 
 /**
@@ -21,7 +17,7 @@ public class Downloader implements Runnable {
     }
 
     public int percentAviable() {
-        BitSet bs = peer.getBitField();
+        BitSet bs = peer.getRecieveBitField();
         int res = 0;
         for (int i = bs.nextSetBit(0); i >= 0; i = bs.nextSetBit(i + 1)) {
             res++;

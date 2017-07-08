@@ -1,6 +1,7 @@
 package com.dms.bittorent;
 
 import java.nio.file.Files;
+import java.util.Date;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -10,14 +11,26 @@ import java.util.concurrent.locks.ReentrantLock;
 public class Piece {
     private byte[] hash;
     private boolean valid = true;
-    private byte[] pieceData;
+    private byte[] pieceData = null;
+    private long lastReadTimer;
 
     public byte[] getPieceData() {
+        setLastReadTimer();
         return pieceData;
+    }
+
+    public void setLastReadTimer() {
+        this.lastReadTimer = new Date().getTime();
+    }
+
+    public long getLastReadTimer() {
+        return new Date().getTime() - lastReadTimer;
     }
 
     public void setPieceData(byte[] pieceData) {
         this.pieceData = pieceData;
+        setLastReadTimer();
+
     }
 
     private boolean isUsed;
@@ -47,7 +60,6 @@ public class Piece {
     public boolean isValid() {
         return valid;
     }
-
 
 
     public Piece(byte[] hash) {
