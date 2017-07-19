@@ -47,7 +47,7 @@ public class Torrent {
         while (true) {
             updater.update();
             try {
-                selector.select(0);
+                selector.select(5);
             } catch (IOException e) {
                 break;
             }
@@ -262,7 +262,7 @@ public class Torrent {
             peer.getPiece().getLock().unlock();
             storage.writePiece(peer.getPiece(), peer);
 
-            peer.write(ProtocolMessages.getByteHave(storage.getPieceIndex(peer.getPiece())));
+           // peer.write(ProtocolMessages.getByteHave(storage.getPieceIndex(peer.getPiece())));
             peer.setPiece(null);
             peer.attempts++;
             //TODO полечить
@@ -358,7 +358,7 @@ public class Torrent {
 
         storage.setBitField();
 
-        peers.add(new Peer(new InetSocketAddress("192.168.1.219", 40051), storage.getNumOfPieces()));
+        //peers.add(new Peer(new InetSocketAddress("192.168.1.219", 40051), storage.getNumOfPieces()));
 //        peers.add(new Peer(new InetSocketAddress("192.168.1.10", 49158)));
 
         Thread storageWriter = new Thread(storage);
