@@ -273,7 +273,8 @@ public class Storage implements Runnable {
                     Piece piece = e.getKey();
                     writeMap.remove(piece);
                     if (!checkPiece(piece)) {
-                        System.out.println("BadPiece: " + peer);
+                        peer.setBadPeer();
+                 //       System.out.println("BadPiece: " + peer);
                     } else {
                         bitField.set(getPieceIndex(piece));
                         peer.getSentBitField().set(getPieceIndex(piece));

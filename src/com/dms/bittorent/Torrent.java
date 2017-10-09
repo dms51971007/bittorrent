@@ -67,9 +67,10 @@ public class Torrent {
 
 
                 SocketChannel channel = (SocketChannel) sk.channel();
+
                 if (sk.isValid() && sk.isConnectable()) {
                     try {
-                        channel.finishConnect();
+                        while (!channel.finishConnect());
                         sk.interestOps(SelectionKey.OP_WRITE);
                     } catch (Exception e) {
                     }
@@ -127,7 +128,7 @@ public class Torrent {
 
                             ProtocolMessages.HTTPMessageType messageType = ProtocolMessages.readMessage(message);
                             if (messageType != null) peer.setLastLog();
-
+                           // System.out.println(messageType);
                             if (messageType == ProtocolMessages.HTTPMessageType.REQUEST) {
                                 System.out.println(messageType);
 
@@ -146,13 +147,31 @@ public class Torrent {
                                 peer.write(ProtocolMessages.getByteMessage(ProtocolMessages.HTTPMessageType.INTERESTED));
                                 updateHAVE(peer, message);
                             } else if (messageType == ProtocolMessages.HTTPMessageType.UNCHOKE) {
+                                if (!peer.isChocked())
+                                    requestNextPiece(peer);
+
                                 peer.setChocked(true);
                                 peer.write(ProtocolMessages.getByteMessage(ProtocolMessages.HTTPMessageType.INTERESTED));
-                                requestNextPiece(peer);
 
                             } else if (messageType == ProtocolMessages.HTTPMessageType.PIECE) {
                                 //TODO проверка номера и размера
                                 long startTime = new Date().getTime();
+
+//                                if (peer.isBadPeer() && peer.getPieceIndex() == 0)
+//                                    System.out.println(peer +" " +  peer.getPieceIndex());
+//                                if (peer.isBadPeer())
+//                                {
+//                                    ByteBuffer bb = java.nio.ByteBuffer.wrap(Arrays.copyOfRange(message, 1, 9));
+//
+//                                    int piece = bb.getInt();
+//                                    int index = bb.getInt();
+//
+//                                    System.out.println(" " + peer.getIsa()  + " get piece " + piece + "||" + index );
+//                                }
+
+
+//                                if (!peer.isBadPeer() && peer.getPieceIndex() == 0)
+//                                    System.out.println(peer +" " +  peer.getPieceIndex());
 
                                 byte[] requestData = Arrays.copyOfRange(message, 9, message.length);
                                 try {
@@ -269,6 +288,10 @@ public class Torrent {
             requestNextPiece(peer);
         } else
             peer.write(ProtocolMessages.getByteRequest1(numPiece, peer.getPieceIndex(), questSize));
+//         //   if (peer.isBadPeer())
+//            {
+//                System.out.println(" " + peer.getIsa()  + " request piece " + numPiece + "||" + peer.getPieceIndex() );
+//            }
         return true;
     }
 
@@ -359,7 +382,7 @@ public class Torrent {
         storage.setBitField();
 
         //peers.add(new Peer(new InetSocketAddress("192.168.1.219", 40051), storage.getNumOfPieces()));
-//        peers.add(new Peer(new InetSocketAddress("192.168.1.10", 49158)));
+        //peers.add(new Peer(new InetSocketAddress("172.20.141.11", 63339), storage.getNumOfPieces()));
 
         Thread storageWriter = new Thread(storage);
         Thread announcer = new Thread(new Announcer(this, (BeList) root.get("announce-list")));
