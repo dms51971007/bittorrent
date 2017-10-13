@@ -73,6 +73,8 @@ public class Torrent {
                         while (!channel.finishConnect());
                         sk.interestOps(SelectionKey.OP_WRITE);
                     } catch (Exception e) {
+                        //TODO !!!1
+                        System.out.println("111");
                     }
                 }
                 if (sk.isValid() && sk.isWritable()) {
@@ -386,8 +388,10 @@ public class Torrent {
 
         Thread storageWriter = new Thread(storage);
         Thread announcer = new Thread(new Announcer(this, (BeList) root.get("announce-list")));
+        announcer.setName("announcer");
         announcer.start();
 
+        storageWriter.setName("storagewrite");
         storageWriter.start();
         //storage.checkAll();
 

@@ -265,6 +265,11 @@ public class Storage implements Runnable {
     @Override
     public void run() {
         while (true) {
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             if (writeMap.size() == 0) continue;
             System.out.println("Cash size:" + writeMap.size());
             for (Map.Entry<Piece, Peer> e : writeMap.entrySet()) {

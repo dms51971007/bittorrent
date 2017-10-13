@@ -59,13 +59,17 @@ public class Updater {
                             }
                             sk.cancel();
                             p.free();
-                        } else {
-                            sk.interestOps(SelectionKey.OP_WRITE);
+                        } else if (!sk.isValid()) {
+                            sk.interestOps(SelectionKey.OP_CONNECT);
                         }
                     }
 
-                    for (Iterator<Peer> it = torrent.getPeers().iterator(); it.hasNext(); )  {
+                    for (Iterator<Peer> it = torrent.getPeers().iterator(); it.hasNext(); ) {
                         Peer p = it.next();
+                        if (torrent.storage.isStorageValid()) {
+                            it.remove();
+                            continue;
+                        }
                         System.out.println(p + " " + p.attempts);
                         if (!p.isUsed()) {
                             if (p.getBadHandShake() < 4) {
