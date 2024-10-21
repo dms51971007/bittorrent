@@ -1,3 +1,3 @@
 # bittorrent
 
-Simple Bittorent client
+Simple Bittorent client beta.001
